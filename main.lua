@@ -1,94 +1,131 @@
--- Rayfield UI Kütüphanesi
+local HttpService = game:GetService("HttpService")
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 
--- İŞTE SENİN GÖRSELDEN BULDUĞUMUZ DOĞRU REMOTE EVENT YOLU
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local sprayEvent = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Paint"):WaitForChild("SprayServer")
 
 local Window = Rayfield:CreateWindow({
-   Name = "🎨 Auto-Draw Pro v1",
-   LoadingTitle = "Sistem Hazırlanıyor...",
+   Name = "🎨 Auto-Draw Pro v2",
+   LoadingTitle = "Gelişmiş Çizim Motoru Yükleniyor...",
    LoadingSubtitle = "by Sen",
    ConfigurationSaving = { Enabled = false },
    KeySystem = false
 })
 
-local MainTab = Window:CreateTab("Çizim Menüsü", 4483362458)
+local MainTab = Window:CreateTab("Çizim Motoru", 4483362458)
 
 -- DEĞİŞKENLER
-local TargetURL = ""
-local StartPosition = nil
+local PointA = nil -- Sol Üst Köşe
+local PointB = nil -- Sağ Alt Köşe
+local PixelData = nil -- JSON'dan gelecek veri
 local IsDrawing = false
 
-MainTab:CreateSection("1. Ayarlar")
+-- ==========================================
+-- 1. AŞAMA: JSON VERİSİ YÜKLEME
+-- ==========================================
+MainTab:CreateSection("1. Resim Verisi Yükle (JSON URL)")
 
-local Input = MainTab:CreateInput({
-   Name = "Resim Verisi (İleride kullanacağız)",
-   PlaceholderText = "Buraya yapıştır...",
+MainTab:CreateInput({
+   Name = "Raw JSON Linki (Pastebin/GitHub)",
+   PlaceholderText = "URL'yi buraya yapıştır ve Enter'a bas...",
    RemoveTextAfterFocusLost = false,
    Callback = function(Text)
-       TargetURL = Text
+       if Text ~= "" then
+           pcall(function()
+               -- İnternetteki metni (JSON) indir
+               local rawJson = game:HttpGet(Text)
+               -- Metni Lua'nın okuyabileceği bir tabloya çevir
+               PixelData = HttpService:JSONDecode(rawJson)
+               
+               Rayfield:Notify({
+                   Title = "Başarılı!",
+                   Content = "Resim verisi başarıyla yüklendi. Pikseller hafızada.",
+                   Duration = 3,
+                   Image = 4483362458,
+               })
+           end)
+       end
    end,
 })
 
-MainTab:CreateSection("2. Çizim Alanı")
+-- ==========================================
+-- 2. AŞAMA: ALAN SEÇİMİ (KARE/DİKDÖRTGEN)
+-- ==========================================
+MainTab:CreateSection("2. Çizim Alanı Seçimi")
 
 MainTab:CreateButton({
-   Name = "📐 Başlangıç Noktasını Seç",
+   Name = "📍 1. Nokta: Sol Üst Köşeyi Seç",
    Callback = function()
-       StartPosition = Mouse.Hit.Position
+       PointA = Mouse.Hit.Position
        Rayfield:Notify({
-           Title = "Nokta Seçildi",
-           Content = "Duvara işaret konuldu!",
+           Title = "1. Nokta Seçildi",
+           Content = "Şimdi sağ alt köşeyi seçin.",
            Duration = 2,
-           Image = 4483362458,
        })
    end,
 })
 
-MainTab:CreateSection("3. Motor")
+MainTab:CreateButton({
+   Name = "📍 2. Nokta: Sağ Alt Köşeyi Seç",
+   Callback = function()
+       PointB = Mouse.Hit.Position
+       Rayfield:Notify({
+           Title = "2. Nokta Seçildi",
+           Content = "Çizim alanı başarıyla belirlendi!",
+           Duration = 2,
+       })
+   end,
+})
+
+-- ==========================================
+-- 3. AŞAMA: ÇİZİM MOTORU
+-- ==========================================
+MainTab:CreateSection("3. Çizimi Başlat")
 
 MainTab:CreateButton({
-   Name = "🚀 Simülasyonu / Çizimi Başlat",
+   Name = "🚀 Çizimi Başlat",
    Callback = function()
-       if not StartPosition then
-           Rayfield:Notify({
-               Title = "Hata!",
-               Content = "Önce duvardan bir başlangıç noktası seç!",
-               Duration = 3,
-               Image = 4483362458,
-           })
+       if not PointA or not PointB then
+           Rayfield:Notify({ Title = "Hata", Content = "Lütfen önce 2 noktayı da seçin!", Duration = 3 })
            return
        end
        
+       if not PixelData then
+           Rayfield:Notify({ Title = "Hata", Content = "Lütfen önce bir JSON resim linki girin!", Duration = 3 })
+           return
+       end
+
        if IsDrawing then return end
        IsDrawing = true
        
-       Rayfield:Notify({
-           Title = "Başladı",
-           Content = "Çizim sunucuya gönderiliyor...",
-           Duration = 2,
-           Image = 4483362458,
-       })
+       Rayfield:Notify({ Title = "Başlıyor", Content = "Çizim sunucuya aktarılıyor...", Duration = 3 })
 
-       -- TEST ÇİZİM DÖNGÜSÜ (Sağa doğru 20 tane kırmızı nokta çizer)
-       for i = 1, 20 do
+       -- Gerçek çizim algoritması
+       for i, pixel in ipairs(PixelData) do
            if not IsDrawing then break end
            
-           local currentPos = StartPosition + Vector3.new(i * 0.2, 0, 0)
-           local currentColor = Color3.fromRGB(255, 0, 0) -- Kırmızı
+           -- JSON'dan gelen veriler genelde 0-1 arası (yüzde) olarak hesaplanmalı
+           -- Eğer JSON verin direkt piksel kordinatı (0-100 vb) ise buraya bir maksimum genişlik değeri ekleyeceğiz.
+           -- Şimdilik pixel.x ve pixel.y'nin 0.0 ile 1.0 arasında bir değer olduğunu varsayıyoruz (Örn: 0.5 tam orta demek)
            
-           -- SPRAYSERVER'A VERİ YOLLAMA KISMI
-           -- Not: Oyunun fırça boyutu veya başka bir parametre isteyip istemediğini bilmediğimizden
-           -- standart pozisyon ve renk yolluyoruz.
+           -- X ve Y ekseninde iki nokta arası hesaplama (Lerp = Linear Interpolation)
+           local targetX = PointA.X + (PointB.X - PointA.X) * pixel.x
+           local targetY = PointA.Y + (PointB.Y - PointA.Y) * pixel.y
+           local targetZ = PointA.Z + (PointB.Z - PointA.Z) * pixel.x -- Derinlik/açı için
+           
+           local currentPos = Vector3.new(targetX, targetY, targetZ)
+           local currentColor = Color3.fromRGB(pixel.r, pixel.g, pixel.b)
+           
+           -- Sunucuya yolla
            pcall(function()
                sprayEvent:FireServer(currentPos, currentColor)
            end)
            
-           task.wait(0.05) -- Spam engeli
+           -- Hızlı çizim için çok kısa bekleme
+           task.wait(0.01) 
        end
        
        IsDrawing = false
